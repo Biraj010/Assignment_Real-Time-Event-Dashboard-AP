@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { EventRepository } from '../repositories/eventRepository.js';
-import type { Broadcaster } from '../types/event.js';
-import { createEventSchema, parseOrThrow } from '../utils/validation.js';
+import type { Broadcaster, EventFilters } from '../types/event.js';
+import { createEventSchema, listEventsQuerySchema, parseOrThrow } from '../utils/validation.js';
 
 export interface EventsRouterDeps {
   repo: EventRepository;
@@ -10,6 +10,12 @@ export interface EventsRouterDeps {
 
 export function createEventsRouter({ repo, broadcaster }: EventsRouterDeps): Router {
   const router = Router();
+
+  router.get('/', async (req, res) => {
+    const filters: EventFilters = parseOrThrow(listEventsQuerySchema, req.query);
+    const { data, pagination } = await repo.list(filters);
+    res.status(200).json({ data, pagination });
+  });
 
   router.post('/', async (req, res) => {
     const input = parseOrThrow(createEventSchema, req.body);
