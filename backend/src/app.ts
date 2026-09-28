@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import type { AppConfig } from './config/env.js';
 import type { Logger } from './lib/logger.js';
 import { createErrorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { createRateLimiter } from './middleware/rateLimiter.js';
 import { createRequestLogger } from './middleware/requestLogger.js';
 import type { EventRepository } from './repositories/eventRepository.js';
 import { createHealthRouter } from './routes/health.js';
@@ -35,7 +36,7 @@ export function createApp(deps: AppDeps): Express {
   app.use(createHealthRouter({ repo }));
 
   const api = Router();
-  app.use('/api', api);
+  app.use('/api', createRateLimiter(config.rateLimit), api);
 
   app.use(notFoundHandler);
   app.use(createErrorHandler({ logger, env: config.env }));
