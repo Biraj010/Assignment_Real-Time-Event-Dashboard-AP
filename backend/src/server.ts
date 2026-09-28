@@ -4,9 +4,11 @@ import { loadConfig } from './config/env.js';
 import { connectWithRetry, createPool } from './db/pool.js';
 import { runMigrations } from './db/migrate.js';
 import { createLogger, logger as fallbackLogger, type Logger } from './lib/logger.js';
+import { createWebSocketServer } from './realtime/websocket.js';
 import { PostgresEventRepository } from './repositories/postgresEventRepository.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
+const WS_PATH = '/ws';
 
 let activeLogger: Logger = fallbackLogger;
 
@@ -55,11 +57,13 @@ async function main(): Promise<void> {
   const repo = new PostgresEventRepository(pool);
 
   const httpServer = http.createServer();
-  const app = createApp({ repo, config, logger });
+  const realtime = createWebSocketServer(httpServer, { path: WS_PATH, logger });
+  const app = createApp({ repo, config, logger, broadcaster: realtime });
   httpServer.on('request', app);
 
   await listen(httpServer, config.port);
   logger.info(`API listening on http://localhost:${config.port}`);
+  logger.info(`WebSocket endpoint at ws://localhost:${config.port}${WS_PATH}`);
 
   let shuttingDown = false;
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
@@ -67,7 +71,7 @@ async function main(): Promise<void> {
       return;
     }
     shuttingDown = true;
-    logger.info({ signal }, 'Shutdown signal received; closing HTTP server');
+    logger.info({ signal }, 'Shutdown signal received; closing WebSocket server');
 
     const forceExit = setTimeout(() => {
       logger.fatal({ timeoutMs: SHUTDOWN_TIMEOUT_MS }, 'Graceful shutdown timed out; forcing exit');
@@ -76,6 +80,8 @@ async function main(): Promise<void> {
     forceExit.unref();
 
     try {
+      await realtime.close();
+      logger.info({ clients: realtime.clientCount() }, 'WebSocket server closed; closing HTTP server');
       await closeServer(httpServer);
       logger.info('HTTP server closed; closing database pool');
       await pool.end();
