@@ -27,6 +27,7 @@ interface AnalyticsCardProps {
   data: Analytics | undefined
   isLoading: boolean
   activeTypes: string[]
+  rangeLabel?: string
   onToggleType: (type: string) => void
 }
 
@@ -86,7 +87,13 @@ function AnalyticsSkeleton() {
   )
 }
 
-export function AnalyticsCard({ data, isLoading, activeTypes, onToggleType }: AnalyticsCardProps) {
+export function AnalyticsCard({
+  data,
+  isLoading,
+  activeTypes,
+  rangeLabel = '24h',
+  onToggleType,
+}: AnalyticsCardProps) {
   const showSkeleton = isLoading && data === undefined
   const showEmpty = !showSkeleton && (data === undefined || data.total === 0)
   const topTypes = data?.byType.slice(0, 6) ?? []
@@ -102,11 +109,11 @@ export function AnalyticsCard({ data, isLoading, activeTypes, onToggleType }: An
           <AnalyticsSkeleton />
         </div>
       ) : showEmpty ? (
-        <p className="mt-4 text-sm text-slate-500">No events in the last 24 hours</p>
+        <p className="mt-4 text-sm text-slate-500">No events in the selected range</p>
       ) : data ? (
         <>
           <div className="mt-4 grid grid-cols-3 gap-3">
-            <Stat label="Events (24h)" value={formatNumber(data.total)} />
+            <Stat label={`Events (${rangeLabel === 'all' ? 'all' : rangeLabel})`} value={formatNumber(data.total)} />
             <Stat label="Types" value={formatNumber(data.byType.length)} />
             <Stat label="Top type" value={topType ?? '—'} />
           </div>

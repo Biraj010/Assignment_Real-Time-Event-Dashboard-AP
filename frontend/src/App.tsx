@@ -7,24 +7,40 @@ import { useAnalytics } from './hooks/useAnalytics.ts'
 import { useEvents } from './hooks/useEvents.ts'
 import { useEventStream } from './hooks/useEventStream.ts'
 import { useFilters } from './hooks/useFilters.ts'
+import { eventMatchesFilters, rangeToHours } from './lib/filters.ts'
 import type { Event } from './types/event.ts'
 
 function App() {
   const { filters, setFilters } = useFilters()
+  const filtersRef = useRef(filters)
+  filtersRef.current = filters
   const onEventRef = useRef<(event: Event) => void>(() => {})
   const { status } = useEventStream({
     onEvent: (event) => {
-      onEventRef.current(event)
+      if (eventMatchesFilters(event, filtersRef.current)) {
+        onEventRef.current(event)
+      }
     },
   })
   const live = status === 'live'
+  const hours = rangeToHours(filters.range)
   const eventsQuery = useEvents(filters, { live })
-  const analyticsQuery = useAnalytics({ live })
+  const catalogQuery = useAnalytics({ live, hours })
+  const filteredAnalyticsQuery = useAnalytics({
+    live,
+    hours,
+    eventTypes: filters.types,
+    enabled: filters.types.length > 0,
+  })
+  const analyticsQuery = filters.types.length > 0 ? filteredAnalyticsQuery : catalogQuery
 
-  const events = eventsQuery.data?.data ?? []
+  const events = (eventsQuery.data?.data ?? []).filter((event) =>
+    eventMatchesFilters(event, filters),
+  )
   const availableTypes = [
     ...new Set([
-      ...(analyticsQuery.data?.byType.map((row) => row.event_type) ?? []),
+      ...(catalogQuery.data?.byType.map((row) => row.event_type) ?? []),
+      ...events.map((event) => event.event_type),
       ...filters.types,
     ]),
   ]
@@ -57,6 +73,7 @@ function App() {
               data={analyticsQuery.data}
               isLoading={analyticsQuery.isPending}
               activeTypes={filters.types}
+              rangeLabel={filters.range}
               onToggleType={(type) => {
                 setFilters((prev) => {
                   const selected = prev.types.includes(type)

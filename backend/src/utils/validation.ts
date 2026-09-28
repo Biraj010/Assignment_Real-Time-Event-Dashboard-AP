@@ -81,12 +81,19 @@ export const listEventsQuerySchema = z
     return filters;
   });
 
-export const analyticsQuerySchema = z.object({
-  hours: z.preprocess(
-    emptyToUndefined,
-    z.coerce.number().int().min(1).max(MAX_ANALYTICS_HOURS).default(24),
-  ),
-});
+export const analyticsQuerySchema = z
+  .object({
+    hours: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number().int().min(1).max(MAX_ANALYTICS_HOURS).default(24),
+    ),
+    event_type: optionalQuery(eventTypeListSchema),
+  })
+  .transform((query) => ({
+    hours: query.hours,
+    eventTypes:
+      query.event_type && query.event_type.length > 0 ? query.event_type : undefined,
+  }));
 
 export type AnalyticsQuery = z.output<typeof analyticsQuerySchema>;
 

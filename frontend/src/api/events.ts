@@ -38,8 +38,12 @@ export async function fetchEvents(query: EventQuery = {}): Promise<PaginatedEven
   return request<PaginatedEvents>(`/api/events${search ? `?${search}` : ''}`)
 }
 
-export async function fetchAnalytics(hours = 24): Promise<Analytics> {
+export async function fetchAnalytics(query: {
+  hours?: number
+  event_type?: string[]
+} = {}): Promise<Analytics> {
   const params = new URLSearchParams()
-  appendParam(params, 'hours', hours)
+  appendParam(params, 'hours', query.hours ?? 24)
+  appendParam(params, 'event_type', query.event_type)
   return request<Analytics>(`/api/events/analytics?${params.toString()}`)
 }

@@ -92,17 +92,19 @@ export class InMemoryEventRepository implements EventRepository {
     };
   }
 
-  async analytics(windowHours: number): Promise<Analytics> {
+  async analytics(windowHours: number, eventTypes?: string[]): Promise<Analytics> {
     this.throwIfFailing();
 
     const now = Date.now();
     const windowStart = now - windowHours * HOUR_MS;
+    const allowedTypes = eventTypes && eventTypes.length > 0 ? new Set(eventTypes) : null;
     const typeCounts = new Map<string, number>();
     const hourCounts = new Map<string, number>();
 
     for (const event of this.events.values()) {
       const time = Date.parse(event.timestamp);
       if (time < windowStart || time > now) continue;
+      if (allowedTypes && !allowedTypes.has(event.event_type)) continue;
 
       typeCounts.set(event.event_type, (typeCounts.get(event.event_type) ?? 0) + 1);
       const hour = toUtcHour(time);

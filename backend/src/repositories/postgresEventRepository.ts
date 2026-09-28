@@ -15,7 +15,7 @@ import type {
   PaginatedResult,
 } from '../types/event.js';
 import { buildPagination } from '../utils/pagination.js';
-import { buildListQuery } from '../utils/queryBuilder.js';
+import { buildAnalyticsQuery, buildListQuery } from '../utils/queryBuilder.js';
 import type { EventRepository } from './eventRepository.js';
 
 export interface SqlClient {
@@ -48,24 +48,6 @@ const INSERT_EVENT_SQL = `
   INSERT INTO events (id, user_id, event_type, payload, timestamp)
   VALUES ($1, $2, $3, $4::jsonb, $5::timestamptz)
   RETURNING id, user_id, event_type, payload, timestamp`;
-
-const WINDOW_CONDITION =
-  'timestamp >= now() - make_interval(hours => $1::int) AND timestamp <= now()';
-
-const COUNT_BY_TYPE_SQL = `
-  SELECT event_type, COUNT(*)::int AS count
-  FROM events
-  WHERE ${WINDOW_CONDITION}
-  GROUP BY event_type
-  ORDER BY count DESC, event_type ASC`;
-
-const COUNT_BY_HOUR_SQL = `
-  SELECT date_trunc('hour', timestamp AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS hour,
-         COUNT(*)::int AS count
-  FROM events
-  WHERE ${WINDOW_CONDITION}
-  GROUP BY 1
-  ORDER BY 1 ASC`;
 
 function toEvent(row: EventRow): Event {
   return {
@@ -129,11 +111,12 @@ export class PostgresEventRepository implements EventRepository {
     }
   }
 
-  async analytics(windowHours: number): Promise<Analytics> {
+  async analytics(windowHours: number, eventTypes?: string[]): Promise<Analytics> {
+    const query = buildAnalyticsQuery(windowHours, eventTypes);
     try {
       const [typeResult, hourlyResult] = await Promise.all([
-        this.db.query<TypeCountRow>(COUNT_BY_TYPE_SQL, [windowHours]),
-        this.db.query<HourlyRow>(COUNT_BY_HOUR_SQL, [windowHours]),
+        this.db.query<TypeCountRow>(query.byTypeText, query.params),
+        this.db.query<HourlyRow>(query.hourlyText, query.params),
       ]);
       const byType: EventTypeCount[] = typeResult.rows.map((row) => ({
         event_type: row.event_type,

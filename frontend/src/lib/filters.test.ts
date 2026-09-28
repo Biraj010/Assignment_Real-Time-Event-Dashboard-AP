@@ -1,6 +1,7 @@
 import {
   DEFAULT_FILTERS,
   PAGE_SIZE,
+  eventMatchesFilters,
   parseFilters,
   serializeFilters,
   toEventQuery,
@@ -57,5 +58,47 @@ describe('toEventQuery range mapping', () => {
       page: 1,
       limit: PAGE_SIZE,
     })
+  })
+
+  it('includes event_type when types are selected', () => {
+    expect(toEventQuery({ ...base, types: ['login', 'click'] }, now).event_type).toEqual([
+      'login',
+      'click',
+    ])
+  })
+})
+
+describe('eventMatchesFilters', () => {
+  const now = new Date('2026-09-28T18:00:00.000Z')
+  const click = {
+    id: '1',
+    user_id: 'u1',
+    event_type: 'click',
+    payload: { button: 'buy-now' },
+    timestamp: '2026-09-28T17:30:00.000Z',
+  }
+  const login = {
+    ...click,
+    id: '2',
+    event_type: 'login',
+    payload: { browser: 'chrome' },
+  }
+  const old = {
+    ...click,
+    id: '3',
+    timestamp: '2026-09-20T18:00:00.000Z',
+  }
+
+  it('drops other event types and out-of-range rows', () => {
+    const filters: Filters = { types: ['click'], q: '', range: '24h', page: 1 }
+    expect(eventMatchesFilters(click, filters, now)).toBe(true)
+    expect(eventMatchesFilters(login, filters, now)).toBe(false)
+    expect(eventMatchesFilters(old, filters, now)).toBe(false)
+  })
+
+  it('matches payload search case-insensitively', () => {
+    const filters: Filters = { types: [], q: 'BUY', range: 'all', page: 1 }
+    expect(eventMatchesFilters(click, filters, now)).toBe(true)
+    expect(eventMatchesFilters(login, filters, now)).toBe(false)
   })
 })

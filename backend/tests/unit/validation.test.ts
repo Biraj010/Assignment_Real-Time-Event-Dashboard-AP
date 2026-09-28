@@ -201,6 +201,13 @@ describe('analyticsQuerySchema', () => {
     expect(parseOrThrow(analyticsQuerySchema, {})).toEqual({ hours: 24 });
   });
 
+  it('parses event_type the same way as the list query', () => {
+    expect(parseOrThrow(analyticsQuerySchema, { hours: '24', event_type: 'click,login' })).toEqual({
+      hours: 24,
+      eventTypes: ['click', 'login'],
+    });
+  });
+
   it.each(['1', '720'])('accepts hours at the bound %s', (hours) => {
     expect(parseOrThrow(analyticsQuerySchema, { hours })).toEqual({ hours: Number(hours) });
   });

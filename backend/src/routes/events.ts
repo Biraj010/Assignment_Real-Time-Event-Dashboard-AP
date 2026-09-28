@@ -17,8 +17,8 @@ export function createEventsRouter({ repo, broadcaster }: EventsRouterDeps): Rou
   const router = Router();
 
   router.get('/analytics', async (req, res) => {
-    const { hours } = parseOrThrow(analyticsQuerySchema, req.query);
-    res.status(200).json(await repo.analytics(hours));
+    const { hours, eventTypes } = parseOrThrow(analyticsQuerySchema, req.query);
+    res.status(200).json(await repo.analytics(hours, eventTypes));
   });
 
   router.get('/', async (req, res) => {

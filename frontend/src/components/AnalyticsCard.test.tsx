@@ -54,7 +54,7 @@ describe('AnalyticsCard', () => {
       />,
     )
 
-    expect(screen.getByText('No events in the last 24 hours')).toBeInTheDocument()
+    expect(screen.getByText('No events in the selected range')).toBeInTheDocument()
   })
 
   it('calls onToggleType when a bar is clicked', async () => {

@@ -31,7 +31,8 @@ export function buildEventFilterClause(filters: EventFilters): FilterClause {
   };
 
   if (filters.eventTypes && filters.eventTypes.length > 0) {
-    conditions.push(`event_type = ANY(${addParam([...filters.eventTypes])}::text[])`);
+    const placeholders = filters.eventTypes.map((type) => addParam(type));
+    conditions.push(`event_type IN (${placeholders.join(', ')})`);
   }
   if (filters.from) {
     conditions.push(`timestamp >= ${addParam(filters.from)}`);
@@ -62,5 +63,43 @@ export function buildListQuery(filters: EventFilters): ListQuery {
     countText: `SELECT COUNT(*)::int AS total FROM events${whereSql}`,
     params: [...params, filters.limit, getOffset(filters.page, filters.limit)],
     countParams: [...params],
+  };
+}
+
+export interface AnalyticsSql {
+  byTypeText: string;
+  hourlyText: string;
+  params: QueryParam[];
+}
+
+export function buildAnalyticsQuery(windowHours: number, eventTypes?: string[]): AnalyticsSql {
+  const params: QueryParam[] = [windowHours];
+  let typeClause = '';
+
+  if (eventTypes && eventTypes.length > 0) {
+    const placeholders = eventTypes.map((type) => {
+      params.push(type);
+      return `$${params.length}`;
+    });
+    typeClause = ` AND event_type IN (${placeholders.join(', ')})`;
+  }
+
+  const where = `timestamp >= now() - make_interval(hours => $1::int) AND timestamp <= now()${typeClause}`;
+
+  return {
+    byTypeText: `
+      SELECT event_type, COUNT(*)::int AS count
+      FROM events
+      WHERE ${where}
+      GROUP BY event_type
+      ORDER BY count DESC, event_type ASC`,
+    hourlyText: `
+      SELECT date_trunc('hour', timestamp AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS hour,
+             COUNT(*)::int AS count
+      FROM events
+      WHERE ${where}
+      GROUP BY 1
+      ORDER BY 1 ASC`,
+    params,
   };
 }

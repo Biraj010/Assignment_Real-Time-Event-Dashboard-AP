@@ -230,6 +230,16 @@ describe('events API', () => {
       ]);
     });
 
+    it('filters analytics by event_type', async () => {
+      const res = await request(ctx.app)
+        .get('/api/events/analytics')
+        .query({ hours: 24, event_type: 'click' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(3);
+      expect(res.body.byType).toEqual([{ event_type: 'click', count: 3 }]);
+    });
+
     it('returns 400 when hours is out of range', async () => {
       const res = await request(ctx.app).get('/api/events/analytics').query({ hours: 0 });
       expect(res.status).toBe(400);

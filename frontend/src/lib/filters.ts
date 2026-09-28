@@ -1,4 +1,4 @@
-import type { EventQuery } from '../types/event.ts'
+import type { Event, EventQuery } from '../types/event.ts'
 
 export const TIME_RANGES = ['1h', '24h', '7d', 'all'] as const
 export type TimeRange = (typeof TIME_RANGES)[number]
@@ -72,7 +72,7 @@ export function toEventQuery(filters: Filters, now = new Date()): EventQuery {
   }
 
   if (filters.types.length > 0) {
-    query.event_type = filters.types
+    query.event_type = [...filters.types]
   }
   if (filters.q.trim() !== '') {
     query.q = filters.q.trim()
@@ -83,4 +83,35 @@ export function toEventQuery(filters: Filters, now = new Date()): EventQuery {
   }
 
   return query
+}
+
+export const RANGE_HOURS: Record<TimeRange, number> = {
+  '1h': 1,
+  '24h': 24,
+  '7d': 168,
+  all: 720,
+}
+
+export function rangeToHours(range: TimeRange): number {
+  return RANGE_HOURS[range]
+}
+
+export function eventMatchesFilters(event: Event, filters: Filters, now = new Date()): boolean {
+  if (filters.types.length > 0 && !filters.types.includes(event.event_type)) {
+    return false
+  }
+
+  const needle = filters.q.trim().toLowerCase()
+  if (needle !== '' && !JSON.stringify(event.payload).toLowerCase().includes(needle)) {
+    return false
+  }
+
+  if (filters.range === 'all') {
+    return true
+  }
+
+  const time = Date.parse(event.timestamp)
+  if (Number.isNaN(time)) return false
+  const from = now.getTime() - RANGE_MS[filters.range]
+  return time >= from && time <= now.getTime()
 }
