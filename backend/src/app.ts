@@ -6,6 +6,7 @@ import type { Logger } from './lib/logger.js';
 import { createErrorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { createRequestLogger } from './middleware/requestLogger.js';
 import type { EventRepository } from './repositories/eventRepository.js';
+import { createHealthRouter } from './routes/health.js';
 import type { Broadcaster } from './types/event.js';
 
 export interface AppDeps {
@@ -31,14 +32,7 @@ export function createApp(deps: AppDeps): Express {
   app.use(express.json({ limit: '100kb' }));
   app.use(createRequestLogger(logger));
 
-  app.get('/health', async (_req, res) => {
-    try {
-      await repo.ping();
-      res.status(200).json({ status: 'ok', db: 'up', uptime: process.uptime() });
-    } catch {
-      res.status(503).json({ status: 'degraded', db: 'down' });
-    }
-  });
+  app.use(createHealthRouter({ repo }));
 
   const api = Router();
   app.use('/api', api);
