@@ -3,8 +3,17 @@ import { connectWithRetry, createPool } from '../src/db/pool.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { ConflictError } from '../src/errors/index.js';
 import { createLogger } from '../src/lib/logger.js';
+import type { EventRepository } from '../src/repositories/eventRepository.js';
+import { InMemoryEventRepository } from '../src/repositories/inMemoryEventRepository.js';
 import { PostgresEventRepository } from '../src/repositories/postgresEventRepository.js';
 import type { Event, EventFilters } from '../src/types/event.js';
+
+interface SmokeTarget {
+  label: string;
+  repo: EventRepository;
+  setup(): Promise<void>;
+  teardown(): Promise<void>;
+}
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -66,7 +75,7 @@ function buildEvents(runId: string, now: number): Event[] {
       id: `${runId}evt-4`,
       user_id: users[1],
       event_type: 'purchase',
-      payload: { item: 'checkout-pro', amount: 49.99, currency: 'USD', quantity: 1 },
+      payload: { item: 'checkout-pro', amount: 49.99 },
       timestamp: at(90 * MINUTE_MS),
     },
     {
@@ -87,7 +96,7 @@ function buildEvents(runId: string, now: number): Event[] {
 }
 
 async function findAcrossPages(
-  repo: PostgresEventRepository,
+  repo: EventRepository,
   filters: Omit<EventFilters, 'page'>,
   predicate: (event: Event) => boolean,
 ): Promise<{ found: Event | undefined; scanned: Event[] }> {
@@ -102,22 +111,46 @@ async function findAcrossPages(
   }
 }
 
-async function main(): Promise<void> {
+function createMemoryTarget(): SmokeTarget {
+  return {
+    label: 'InMemoryEventRepository',
+    repo: new InMemoryEventRepository(),
+    setup: async () => undefined,
+    teardown: async () => undefined,
+  };
+}
+
+function createPostgresTarget(): SmokeTarget {
   const config = loadConfig();
   const logger = createLogger(config.logLevel === 'info' ? 'warn' : config.logLevel, config.env);
   const pool = createPool(config.databaseUrl, logger);
-  const repo = new PostgresEventRepository(pool);
+
+  return {
+    label: 'PostgresEventRepository',
+    repo: new PostgresEventRepository(pool),
+    setup: async () => {
+      section('Connection & migrations');
+      await connectWithRetry(pool, { logger, retries: 3 });
+      assert(true, 'connected to PostgreSQL');
+      await runMigrations(pool, logger);
+      assert(true, 'migrations applied');
+    },
+    teardown: () => pool.end(),
+  };
+}
+
+async function main(): Promise<void> {
+  const useMemory = process.argv.includes('--memory');
   const runId = `smoke-${Date.now()}-`;
   const now = Date.now();
-
-  console.log(`Smoke test run id: ${runId}`);
+  let target: SmokeTarget | undefined;
 
   try {
-    section('Connection & migrations');
-    await connectWithRetry(pool, { logger, retries: 3 });
-    assert(true, 'connected to PostgreSQL');
-    await runMigrations(pool, logger);
-    assert(true, 'migrations applied');
+    target = useMemory ? createMemoryTarget() : createPostgresTarget();
+    const { repo } = target;
+    console.log(`Smoke test against ${target.label}, run id: ${runId}`);
+
+    await target.setup();
 
     section('create()');
     const events = buildEvents(runId, now);
@@ -200,14 +233,13 @@ async function main(): Promise<void> {
       'byType is sorted by count desc',
     );
     assert(analytics.hourly.length > 0, `hourly is non-empty (${analytics.hourly.length} buckets)`);
-    console.log(`\n  total: ${analytics.total}`);
+    console.log(`\n  total: ${analytics.total}, hourly buckets: ${analytics.hourly.length}`);
     console.table(analytics.byType);
-    console.table(analytics.hourly);
   } catch (err) {
     failed += 1;
     console.error('\n  \u2718 Unexpected error:', err);
   } finally {
-    await pool.end();
+    await target?.teardown();
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);
