@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http';
+import http from 'node:http';
 import { createApp } from './app.js';
 import { loadConfig } from './config/env.js';
 import { connectWithRetry, createPool } from './db/pool.js';
@@ -10,7 +10,17 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 let activeLogger: Logger = fallbackLogger;
 
-function listen(server: Server, port: number): Promise<void> {
+process.on('unhandledRejection', (reason) => {
+  activeLogger.fatal({ err: reason }, 'Unhandled promise rejection');
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  activeLogger.fatal({ err }, 'Uncaught exception');
+  process.exit(1);
+});
+
+function listen(server: http.Server, port: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const onError = (err: Error): void => {
       server.off('listening', onListening);
@@ -26,9 +36,10 @@ function listen(server: Server, port: number): Promise<void> {
   });
 }
 
-function closeServer(server: Server): Promise<void> {
+function closeServer(server: http.Server): Promise<void> {
   return new Promise((resolve, reject) => {
     server.close((err) => (err ? reject(err) : resolve()));
+    server.closeIdleConnections();
   });
 }
 
@@ -42,8 +53,11 @@ async function main(): Promise<void> {
   await runMigrations(pool, logger);
 
   const repo = new PostgresEventRepository(pool);
+
+  const httpServer = http.createServer();
   const app = createApp({ repo, config, logger });
-  const httpServer = createServer(app);
+  httpServer.on('request', app);
+
   await listen(httpServer, config.port);
   logger.info(`API listening on http://localhost:${config.port}`);
 
@@ -53,25 +67,23 @@ async function main(): Promise<void> {
       return;
     }
     shuttingDown = true;
-    logger.info({ signal }, 'Shutdown signal received');
+    logger.info({ signal }, 'Shutdown signal received; closing HTTP server');
 
     const forceExit = setTimeout(() => {
-      logger.error({ timeoutMs: SHUTDOWN_TIMEOUT_MS }, 'Graceful shutdown timed out; forcing exit');
+      logger.fatal({ timeoutMs: SHUTDOWN_TIMEOUT_MS }, 'Graceful shutdown timed out; forcing exit');
       process.exit(1);
     }, SHUTDOWN_TIMEOUT_MS);
     forceExit.unref();
 
     try {
       await closeServer(httpServer);
-      logger.info('HTTP server closed');
+      logger.info('HTTP server closed; closing database pool');
       await pool.end();
-      logger.info('Database pool closed');
-      process.exitCode = 0;
+      logger.info('Database pool closed; exiting');
+      process.exit(0);
     } catch (err) {
       logger.error({ err }, 'Error during shutdown');
-      process.exitCode = 1;
-    } finally {
-      clearTimeout(forceExit);
+      process.exit(1);
     }
   };
 
