@@ -6,6 +6,7 @@ import type { Logger } from './lib/logger.js';
 import { createErrorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { createRateLimiter } from './middleware/rateLimiter.js';
 import { createRequestLogger } from './middleware/requestLogger.js';
+import { noopBroadcaster } from './realtime/websocket.js';
 import type { EventRepository } from './repositories/eventRepository.js';
 import { createEventsRouter } from './routes/events.js';
 import { createHealthRouter } from './routes/health.js';
@@ -17,10 +18,6 @@ export interface AppDeps {
   logger: Logger;
   broadcaster?: Broadcaster;
 }
-
-export const noopBroadcaster: Broadcaster = {
-  broadcast: () => undefined,
-};
 
 export function createApp(deps: AppDeps): Express {
   const { repo, config, logger } = deps;
