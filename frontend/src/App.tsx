@@ -1,3 +1,4 @@
+import { FiltersPanel } from './components/FiltersPanel.tsx'
 import { Header } from './components/Header.tsx'
 import { useAnalytics } from './hooks/useAnalytics.ts'
 import { useEvents } from './hooks/useEvents.ts'
@@ -6,7 +7,7 @@ import { useFilters } from './hooks/useFilters.ts'
 import { formatNumber, relativeTime } from './lib/format.ts'
 
 function App() {
-  const { filters } = useFilters()
+  const { filters, setFilters } = useFilters()
   const { status } = useEventStream()
   const live = status === 'live'
   const eventsQuery = useEvents(filters, { live })
@@ -14,6 +15,12 @@ function App() {
 
   const events = eventsQuery.data?.data ?? []
   const total = analyticsQuery.data?.total ?? eventsQuery.data?.pagination.total
+  const availableTypes = [
+    ...new Set([
+      ...(analyticsQuery.data?.byType.map((row) => row.event_type) ?? []),
+      ...filters.types,
+    ]),
+  ]
 
   return (
     <div className="min-h-screen">
@@ -38,10 +45,7 @@ function App() {
           </section>
 
           <aside className="flex flex-col gap-6 lg:col-span-4 lg:sticky lg:top-4 lg:self-start">
-            <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-              <h2 className="text-sm font-medium text-slate-200">Filters</h2>
-              <p className="mt-2 text-sm text-slate-500">Search, types, and time range will go here.</p>
-            </section>
+            <FiltersPanel filters={filters} onChange={setFilters} availableTypes={availableTypes} />
             <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
               <h2 className="text-sm font-medium text-slate-200">Analytics</h2>
               <p className="mt-2 text-2xl font-semibold text-slate-50">
