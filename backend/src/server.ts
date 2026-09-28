@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   await runMigrations(pool, logger);
 
   const repo = new PostgresEventRepository(pool);
-  const app = createApp({ repo });
+  const app = createApp({ repo, logger, env: config.env });
   const httpServer = createServer(app);
   await listen(httpServer, config.port);
   logger.info(`API listening on http://localhost:${config.port}`);

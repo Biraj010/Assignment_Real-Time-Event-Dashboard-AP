@@ -1,19 +1,25 @@
-import express, {
-  type ErrorRequestHandler,
-  type Express,
-  type RequestHandler,
-} from 'express';
-import { AppError } from './errors/index.js';
+import express, { type Express } from 'express';
+import type { NodeEnv } from './config/env.js';
+import { logger as defaultLogger, type Logger } from './lib/logger.js';
+import { createErrorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { createRequestLogger } from './middleware/requestLogger.js';
 import type { EventRepository } from './repositories/eventRepository.js';
 
 export interface AppDependencies {
   repo: EventRepository;
+  logger?: Logger;
+  env?: NodeEnv;
 }
 
-export function createApp({ repo }: AppDependencies): Express {
+export function createApp({
+  repo,
+  logger = defaultLogger,
+  env = 'production',
+}: AppDependencies): Express {
   const app = express();
 
   app.disable('x-powered-by');
+  app.use(createRequestLogger(logger));
   app.use(express.json({ limit: '100kb' }));
 
   app.get('/health', async (_req, res) => {
@@ -25,20 +31,8 @@ export function createApp({ repo }: AppDependencies): Express {
     }
   });
 
-  const notFoundHandler: RequestHandler = (_req, res) => {
-    res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Route not found' } });
-  };
-
-  const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
-    if (err instanceof AppError) {
-      res.status(err.statusCode).json({ error: { code: err.code, message: err.message } });
-      return;
-    }
-    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
-  };
-
   app.use(notFoundHandler);
-  app.use(errorHandler);
+  app.use(createErrorHandler({ logger, env }));
 
   return app;
 }
