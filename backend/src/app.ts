@@ -1,26 +1,35 @@
-import express, { type Express } from 'express';
-import type { NodeEnv } from './config/env.js';
-import { logger as defaultLogger, type Logger } from './lib/logger.js';
+import cors from 'cors';
+import express, { Router, type Express } from 'express';
+import helmet from 'helmet';
+import type { AppConfig } from './config/env.js';
+import type { Logger } from './lib/logger.js';
 import { createErrorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { createRequestLogger } from './middleware/requestLogger.js';
 import type { EventRepository } from './repositories/eventRepository.js';
+import type { Broadcaster } from './types/event.js';
 
-export interface AppDependencies {
+export interface AppDeps {
   repo: EventRepository;
-  logger?: Logger;
-  env?: NodeEnv;
+  config: AppConfig;
+  logger: Logger;
+  broadcaster?: Broadcaster;
 }
 
-export function createApp({
-  repo,
-  logger = defaultLogger,
-  env = 'production',
-}: AppDependencies): Express {
+export const noopBroadcaster: Broadcaster = {
+  broadcast: () => undefined,
+};
+
+export function createApp(deps: AppDeps): Express {
+  const { repo, config, logger } = deps;
+  const broadcaster = deps.broadcaster ?? noopBroadcaster;
   const app = express();
 
+  app.set('trust proxy', config.trustProxy);
   app.disable('x-powered-by');
-  app.use(createRequestLogger(logger));
+  app.use(helmet());
+  app.use(cors({ origin: config.corsOrigins === '*' ? '*' : config.corsOrigins }));
   app.use(express.json({ limit: '100kb' }));
+  app.use(createRequestLogger(logger));
 
   app.get('/health', async (_req, res) => {
     try {
@@ -31,8 +40,11 @@ export function createApp({
     }
   });
 
+  const api = Router();
+  app.use('/api', api);
+
   app.use(notFoundHandler);
-  app.use(createErrorHandler({ logger, env }));
+  app.use(createErrorHandler({ logger, env: config.env }));
 
   return app;
 }
