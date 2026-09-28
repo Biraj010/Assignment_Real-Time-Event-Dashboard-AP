@@ -7,6 +7,7 @@ import { createErrorHandler, notFoundHandler } from './middleware/errorHandler.j
 import { createRateLimiter } from './middleware/rateLimiter.js';
 import { createRequestLogger } from './middleware/requestLogger.js';
 import type { EventRepository } from './repositories/eventRepository.js';
+import { createEventsRouter } from './routes/events.js';
 import { createHealthRouter } from './routes/health.js';
 import type { Broadcaster } from './types/event.js';
 
@@ -36,6 +37,7 @@ export function createApp(deps: AppDeps): Express {
   app.use(createHealthRouter({ repo }));
 
   const api = Router();
+  api.use('/events', createEventsRouter({ repo, broadcaster }));
   app.use('/api', createRateLimiter(config.rateLimit), api);
 
   app.use(notFoundHandler);
